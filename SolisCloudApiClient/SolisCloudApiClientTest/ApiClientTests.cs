@@ -26,24 +26,26 @@ public class ApiClientTests
     [Test]
     public async Task UserStationList()
     {
-        var userStationList =
-            await client.Post<ListResponse<UserStation>>("/v1/api/userStationList", new UserStationListRequest(1, 10));
-
-        foreach (var record in userStationList.data.page.records)
+        var userStationList = await client.UserStationList(1, 10);
+        foreach (var userStation in userStationList)
         {
-            Console.WriteLine(record);
+            Console.WriteLine(userStation);
             Console.WriteLine();
         }
 
-        var inverterList =
-            await client.Post<ListResponse<UserStation>>("/v1/api/inverterList", new UserStationListRequest(1, 10));
+        var inverterList = await client.InverterList(1, 10, null);
+        foreach (var inverter in inverterList)
+        {
+            Console.WriteLine(inverter);
+            Console.WriteLine();
+        }
     }
 
     [Test]
     public async Task InverterDay()
     {
         var inverterDay =
-            await client.Post<InverterDayResponse>("/v1/api/inverterDay",
+            await client.Post<InverterDayResponse>("inverterDay",
                 new InverterDayRequest("6031023227030011", "2024-06-17", 0));
 
         foreach (var data in inverterDay.data)
@@ -54,18 +56,9 @@ public class ApiClientTests
         }
     }
 
-    private record UserStationListRequest(int pageNo, int pageSize);
 
     private record Response<T>(string code, T data);
 
-    private record ListResponse<T>(string code, Data<T> data);
-
-    private record Data<T>(Page<T> page);
-
-    private record Page<T>(int mpptSwitch, int current, bool optimizeCountSql, int pages, List<T> records);
-
-    private record UserStation(string id, string installer, string installerId, double dayEnergy,
-        double gridPurchasedTodayEnergy, double gridSellTodayEnergy, double homeLoadTodayEnergy, double power);
 
     private record StationDetailRequest(string id);
 
