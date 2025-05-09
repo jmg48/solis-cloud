@@ -29,6 +29,8 @@ public class ApiClientTests
     [Test]
     public async Task StationMonth()
     {
+        var monthly = new Dictionary<DateTime, (double, double)>();
+
         for (var month = new DateTime(2023, 1, 1); month < DateTime.Now; month = month.AddMonths(1))
         {
             await Task.Delay(100);
@@ -37,8 +39,8 @@ public class ApiClientTests
                 await client.Post<StationMonthResponse>("stationMonth",
                     new StationMonthRequest(1298491919448946467, "GBP", $"{month:yyyy-MM}", 0, null));
 
-            var totalEnergy = 0.0;
-            var totalIncome = 0.0;
+            var monthlyEnergy = 0.0;
+            var monthlyIncome = 0.0;
             foreach (var day in inverterDay.data)
             {
                 var date = DateTime.UnixEpoch.AddMilliseconds(day.date);
@@ -51,11 +53,19 @@ public class ApiClientTests
 
                 // Console.WriteLine($"date: {date:dd-MMM-yyyy}, income: £{income:0.00}, energy: {day.energy:0.0}, imported: {day.gridPurchasedEnergy:0.0}, exported: {day.gridSellEnergy:0.0}");
 
-                totalEnergy += energy;
-                totalIncome += income;
+                monthlyEnergy += energy;
+                monthlyIncome += income;
             }
 
-            Console.WriteLine($"month: {month:MMM-yyyy}, energy: {totalEnergy,5:0.0}, income: {totalIncome,7:£0.00}");
+            monthly.Add(month, (monthlyEnergy, monthlyIncome));
+
+            Console.WriteLine($"month: {month:MMM-yyyy}, energy: {monthlyEnergy,5:0.0}, income: {monthlyIncome,7:£0.00}");
+        }
+
+        Console.WriteLine();
+        foreach (var group in monthly.GroupBy(it => it.Key.Year))
+        {
+            Console.WriteLine($"year: {group.Key}, energy: {group.Sum(it => it.Value.Item1),5:0.0}, income: {group.Sum(it => it.Value.Item2),7:£0.00}");
         }
     }
 
