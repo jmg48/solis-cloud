@@ -11,10 +11,15 @@ public class ApiClient
     private readonly string key;
     private readonly string secret;
 
-    public ApiClient(string key, string secret)
+    public ApiClient()
+        : this(Environment.GetEnvironmentVariable("SOLIS_KEY_ID"), Environment.GetEnvironmentVariable("SOLIS_KEY_SECRET"))
+    {        
+    }
+
+    public ApiClient(string? key, string? secret)
     {
-        this.key = key;
-        this.secret = secret;
+        this.key = key!;
+        this.secret = secret!;
         client.BaseAddress = new Uri("https://www.soliscloud.com:13333");
     }
 
@@ -52,6 +57,9 @@ public class ApiClient
 
     private async Task<string> Post(string url, string content)
     {
+        //Console.WriteLine($"url: {url}");
+        //Console.WriteLine($"content: {content}");
+
         var request = new HttpRequestMessage(HttpMethod.Post, url);
         var date = DateTime.UtcNow.ToString("ddd, d MMM yyyy HH:mm:ss 'GMT'");
 
@@ -62,19 +70,31 @@ public class ApiClient
 
         var hmacSha1 = new HMACSHA1(Encoding.UTF8.GetBytes(secret));
 
-        var param = $"POST\n{contentMd5}\napplication/json\n{date}\n{url}";
+        var param = $@"POST
+{contentMd5}
+application/json
+{date}
+{url}";
 
         var sign = Convert.ToBase64String(hmacSha1.ComputeHash(Encoding.UTF8.GetBytes(param)));
 
         var auth = $"API {key}:{sign}";
 
+        request.Headers.Add("Time", date);
         request.Headers.Add("Authorization", auth);
+        request.Headers.Add("User-Agent", "SolisCloudApiClient");
         request.Content.Headers.Add("Content-MD5", contentMd5);
-        request.Headers.Add("Date", date);
 
         var result = await client.SendAsync(request);
 
-        result.EnsureSuccessStatusCode();
+        try
+        {
+            result.EnsureSuccessStatusCode();
+        }
+        catch(Exception ex)
+        {
+            throw new Exception(await result.Content.ReadAsStringAsync(), ex);
+        }
 
         return await result.Content.ReadAsStringAsync();
     }

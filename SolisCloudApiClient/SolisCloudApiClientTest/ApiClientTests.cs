@@ -1,27 +1,12 @@
-using System.Reflection;
+using NUnit.Framework.Internal;
 using SolisCloudApiClient;
+using System.ComponentModel.DataAnnotations;
 
 namespace SolisCloudApiClientTest;
 
 public class ApiClientTests
 {
-    private readonly ApiClient client;
-
-    public ApiClientTests()
-    {
-        var solutionFolder = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory;
-
-        while (solutionFolder != null && solutionFolder.GetFiles("*.sln").Length == 0)
-            solutionFolder = solutionFolder.Parent;
-
-        if (solutionFolder != null)
-        {
-            var settings = File.ReadAllLines(solutionFolder.GetFiles("apiSettings.txt").Single().FullName);
-            var key = settings[0];
-            var secret = settings[1];
-            client = new ApiClient(key, secret);
-        }
-    }
+    private readonly ApiClient client = new ApiClient();
 
     [Test]
     public async Task UserStationList()
@@ -40,6 +25,68 @@ public class ApiClientTests
             Console.WriteLine();
         }
     }
+
+    [Test]
+    public async Task StationMonth()
+    {
+        for (var month = new DateTime(2023, 1, 1); month < DateTime.Now; month = month.AddMonths(1))
+        {
+            await Task.Delay(100);
+
+            var inverterDay =
+                await client.Post<StationMonthResponse>("stationMonth",
+                    new StationMonthRequest(1298491919448946467, "GBP", $"{month:yyyy-MM}", 0, null));
+
+            var totalEnergy = 0.0;
+            var totalIncome = 0.0;
+            foreach (var day in inverterDay.data)
+            {
+                var date = DateTime.UnixEpoch.AddMilliseconds(day.date);
+
+                var energy = day.energy;
+                var exported = day.gridSellEnergy;
+                var notImported = energy - exported;
+
+                var income = exported * ExportRate(date) + notImported * .3306;
+
+                // Console.WriteLine($"date: {date:dd-MMM-yyyy}, income: £{income:0.00}, energy: {day.energy:0.0}, imported: {day.gridPurchasedEnergy:0.0}, exported: {day.gridSellEnergy:0.0}");
+
+                totalEnergy += energy;
+                totalIncome += income;
+            }
+
+            Console.WriteLine($"month: {month:MMM-yyyy}, energy: {totalEnergy,5:0.0}, income: {totalIncome,7:£0.00}");
+        }
+    }
+
+    private double ExportRate(DateTime when)
+    {
+        if (when > new DateTime(2024, 10, 1))
+        {
+            return .1032;
+        }
+
+        if (when > new DateTime(2023, 10, 1))
+        {
+            return .1422;
+        }
+
+        if (when > new DateTime(2022, 10, 1))
+        {
+            return .1766;
+        }
+
+        throw new NotSupportedException();
+    }
+
+    private record StationMonthRequest(long id, string money, string month, int timeZone, string nmiCode);
+
+    private record StationMonthResponse(bool success, string code, string msg, List<StationMonthData> data);
+    
+    private record StationMonthData(string id, double money, string moneyStr, string moneyPec, double energy, string energyStr, string energyPec, double fullHour,
+        long date, string dateStr, int timeZone,
+        double batteryDischargeEnergy, double batteryChargeEnergy, double gridPurchasedEnergy, double gridPurchasedIncome, double gridSellEnergy, double gridSellIncome,
+        double homeLoadEnergy, double consumeEnergy, double produceEnergy, double offSetEnergy, double offSetIncome, int errorFlag);
 
     [Test]
     public async Task InverterDay()
