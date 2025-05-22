@@ -6,7 +6,7 @@ namespace SolisCloudApiClientTest;
 
 public class ApiClientTests
 {
-    private readonly ApiClient client = new ApiClient();
+    private readonly ApiClient client = new();
 
     [Test]
     public async Task UserStationList()
@@ -27,46 +27,63 @@ public class ApiClientTests
     }
 
     [Test]
+    public async Task StationDay()
+    {
+        var station = (await client.UserStationList()).Single();
+
+    }
+
+    [Test]
     public async Task StationMonth()
     {
-        var monthly = new Dictionary<DateTime, (double, double)>();
+        var station = (await client.UserStationList()).Single();
 
-        for (var month = new DateTime(2023, 1, 1); month < DateTime.Now; month = month.AddMonths(1))
-        {
-            await Task.Delay(100);
-
-            var inverterDay =
-                await client.Post<StationMonthResponse>("stationMonth",
-                    new StationMonthRequest(1298491919448946467, "GBP", $"{month:yyyy-MM}", 0, null));
-
-            var monthlyEnergy = 0.0;
-            var monthlyIncome = 0.0;
-            foreach (var day in inverterDay.data)
+        var yearly = (await station.StationAll())
+            .Select(it =>
             {
-                var date = DateTime.UnixEpoch.AddMilliseconds(day.date);
+                var year = it.Key;
+                var yearData = it.Value;
 
-                var energy = day.energy;
-                var exported = day.gridSellEnergy;
-                var notImported = energy - exported;
+                var energy = yearData.Energy;
+                var earned = yearData.GridSellEnergy * ExportRate(year);
+                var saved = (yearData.Energy - yearData.GridSellEnergy) * .3306;
+                var rate = (earned + saved) / energy * 100;
 
-                var income = exported * ExportRate(date) + notImported * .3306;
+                return (year, energy, earned, saved, rate);
+            });
 
-                // Console.WriteLine($"date: {date:dd-MMM-yyyy}, income: £{income:0.00}, energy: {day.energy:0.0}, imported: {day.gridPurchasedEnergy:0.0}, exported: {day.gridSellEnergy:0.0}");
+        var monthly = Enumerable.Range(2023, 3).ToAsyncEnumerable()
+            .SelectManyAwait(async it => (await station.StationYear(it)).ToAsyncEnumerable())
+            .Select(it =>
+            {
+                var month = it.Key;
+                var monthData = it.Value;
 
-                monthlyEnergy += energy;
-                monthlyIncome += income;
-            }
+                var energy = monthData.Energy;
+                var earned = monthData.GridSellEnergy * ExportRate(month);
+                var saved = (monthData.Energy - monthData.GridSellEnergy) * .3306;
+                var rate = (earned + saved) / energy * 100;
 
-            monthly.Add(month, (monthlyEnergy, monthlyIncome));
+                return (month, energy, earned, saved, rate);
+            }).ToEnumerable();
 
-            Console.WriteLine($"month: {month:MMM-yyyy}, energy: {monthlyEnergy,5:0.0}, income: {monthlyIncome,7:£0.00}");
+        var totalIncome = yearly.Sum(it => it.earned + it.saved);
+        Console.WriteLine($"totalIncome: {totalIncome:£#,###.00}");
+        Console.WriteLine();
+
+        foreach (var (year, energy, earned, saved, rate) in yearly.OrderBy(it => it.year))
+        {
+            Console.WriteLine($"year: {year:yyyy}, energy: {energy,5:0.0}, income: {earned + saved,7:£0.00}, earned: {earned,7:£0.00}, saved: {saved,7:£0.00}, rate: {rate,5:0.0p}");
         }
 
         Console.WriteLine();
-        foreach (var group in monthly.GroupBy(it => it.Key.Year))
+
+        foreach (var (month, energy, earned, saved, rate) in monthly.OrderBy(it => it.month))
         {
-            Console.WriteLine($"year: {group.Key}, energy: {group.Sum(it => it.Value.Item1),5:0.0}, income: {group.Sum(it => it.Value.Item2),7:£0.00}");
+            Console.WriteLine($"month: {month:MMM-yyyy}, energy: {energy,5:0.0}, income: {earned + saved,7:£0.00}, earned: {earned,7:£0.00}, saved: {saved,7:£0.00}, rate: {rate,5:0.0p}");
         }
+
+        Console.WriteLine();
     }
 
     private double ExportRate(DateTime when)
@@ -88,15 +105,6 @@ public class ApiClientTests
 
         throw new NotSupportedException();
     }
-
-    private record StationMonthRequest(long id, string money, string month, int timeZone, string nmiCode);
-
-    private record StationMonthResponse(bool success, string code, string msg, List<StationMonthData> data);
-    
-    private record StationMonthData(string id, double money, string moneyStr, string moneyPec, double energy, string energyStr, string energyPec, double fullHour,
-        long date, string dateStr, int timeZone,
-        double batteryDischargeEnergy, double batteryChargeEnergy, double gridPurchasedEnergy, double gridPurchasedIncome, double gridSellEnergy, double gridSellIncome,
-        double homeLoadEnergy, double consumeEnergy, double produceEnergy, double offSetEnergy, double offSetIncome, int errorFlag);
 
     [Test]
     public async Task InverterDay()

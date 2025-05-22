@@ -1,4 +1,7 @@
-﻿using System.Net.Http.Headers;
+﻿using SolisCloudApiClient.Domain;
+using SolisCloudApiClient.Dto;
+using System.Collections.Concurrent;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -7,6 +10,10 @@ namespace SolisCloudApiClient;
 
 public class ApiClient
 {
+    private readonly ConcurrentDictionary<string, Task<StationAllResponse?>> stationAllCache = new();
+    private readonly ConcurrentDictionary<(string, int), Task<StationYearResponse?>> stationYearCache = new();
+    private readonly ConcurrentDictionary<(string, int, int), Task<StationMonthResponse?>> stationMonthCache = new();
+
     private readonly HttpClient client = new();
     private readonly string key;
     private readonly string secret;
@@ -25,23 +32,23 @@ public class ApiClient
 
     public bool IsDebug { get; set; }
 
-    public async Task<IReadOnlyList<UserStation>> UserStationList(int pageNo, int pageSize)
+    public async Task<IReadOnlyList<Station>> UserStationList(int pageNo = 1, int pageSize = 10)
     {
         var result =
             await Post<ListResponse<UserStation>>("userStationList", new UserStationListRequest(pageNo, pageSize));
-        return result.data.page.records;
+        return (result?.data.page.records ?? []).Select(it => new Station(this, it)).ToList();
     }
 
     public async Task<IReadOnlyList<Inverter>> InverterList(int pageNo, int pageSize, int? stationId)
     {
         var result =
             await Post<ListResponse<Inverter>>("inverterList", new InverterListRequest(pageNo, pageSize, stationId));
-        return result.data.page.records;
+        return result?.data.page.records ?? [];
     }
 
     public async Task<T?> Post<T>(string resource, object body)
     {
-        var content = JsonSerializer.Serialize(body);
+        var content = JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
         var response = await Post($"/v1/api/{resource}", content);
 
         if (IsDebug)
@@ -52,8 +59,32 @@ public class ApiClient
             Console.WriteLine();
         }
 
-        return JsonSerializer.Deserialize<T>(response);
+        return JsonSerializer.Deserialize<T>(response, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
     }
+
+    public async Task<Dictionary<DateTime, IStationData>> StationAll(string stationId) => (await stationAllCache.GetOrAdd(
+        stationId,
+        it => Post<StationAllResponse>("stationAll", new StationAllRequest(stationId, "GBP", 0, null))))?.Data
+        .ToDictionary(
+            it => new DateTime(it.year, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            it => it as IStationData)
+        ?? [];
+
+    public async Task<Dictionary<DateTime, IStationData>> StationYear(int year, string stationId) => (await stationYearCache.GetOrAdd(
+        (stationId, year),
+        it => Post<StationYearResponse>("stationYear", new StationYearRequest(it.Item1, "GBP", $"{it.Item2}", 0, null))))?.Data
+        .ToDictionary(
+            it => DateTime.UnixEpoch.AddMilliseconds(it.Date),
+            it => it as IStationData)
+        ?? [];
+
+    public async Task<Dictionary<DateTime, IStationData>> StationMonth(int year, int month, string stationId) => (await stationMonthCache.GetOrAdd(
+        (stationId, year, month),
+        it => Post<StationMonthResponse>("stationMonth", new StationMonthRequest(it.Item1, "GBP", $"{it.Item2}-{it.Item3}", 0, null))))?.Data
+        .ToDictionary(
+            it => DateTime.UnixEpoch.AddMilliseconds(it.Date),
+            it => it as IStationData)
+        ?? [];
 
     private async Task<string> Post(string url, string content)
     {
