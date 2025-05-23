@@ -1,6 +1,6 @@
 ﻿namespace SolisCloudApiClient.Domain;
 
 public interface IStationData {
-    public double Energy { get; }
-    public double GridSellEnergy { get; }
+    double Energy { get; }
+    double GridSellEnergy { get; }
 }

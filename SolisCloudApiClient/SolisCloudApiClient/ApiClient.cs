@@ -86,35 +86,36 @@ public class ApiClient
             it => it as IStationData)
         ?? [];
 
+    public async Task<List<StationPower>> StationDay(DateTime day, string stationId) =>
+        (await Post<StationDayResponse>("stationDay", new StationDayRequest(stationId, "GBP", $"{day:yyyy-MM-dd}", 0, null)))?
+        .Data.Select(it => new StationPower(
+            DateTime.UnixEpoch.AddMilliseconds(it.Time).AddHours(it.TimeZone),
+            it.ProduceEnergy,
+            it.BatteryPower,
+            it.Psum,
+            it.ConsumeEnergy)).ToList() ?? [];
+
     private async Task<string> Post(string url, string content)
     {
-        //Console.WriteLine($"url: {url}");
-        //Console.WriteLine($"content: {content}");
-
         var request = new HttpRequestMessage(HttpMethod.Post, url);
         var date = DateTime.UtcNow.ToString("ddd, d MMM yyyy HH:mm:ss 'GMT'");
 
         request.Content = new StringContent(content);
-        request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json;charset=UTF-8");
 
         var contentMd5 = Convert.ToBase64String(MD5.HashData(Encoding.UTF8.GetBytes(content)));
 
         var hmacSha1 = new HMACSHA1(Encoding.UTF8.GetBytes(secret));
 
-        var param = $@"POST
-{contentMd5}
-application/json
-{date}
-{url}";
+        var param = $"POST\n{contentMd5}\napplication/json\n{date}\n{url}";
 
         var sign = Convert.ToBase64String(hmacSha1.ComputeHash(Encoding.UTF8.GetBytes(param)));
 
         var auth = $"API {key}:{sign}";
 
-        request.Headers.Add("Time", date);
-        request.Headers.Add("Authorization", auth);
-        request.Headers.Add("User-Agent", "SolisCloudApiClient");
         request.Content.Headers.Add("Content-MD5", contentMd5);
+        request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json;charset=UTF-8");
+        request.Headers.Add("Date", date);
+        request.Headers.Add("Authorization", auth);
 
         var result = await client.SendAsync(request);
 

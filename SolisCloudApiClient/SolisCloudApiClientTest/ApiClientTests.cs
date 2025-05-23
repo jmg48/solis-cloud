@@ -6,7 +6,7 @@ namespace SolisCloudApiClientTest;
 
 public class ApiClientTests
 {
-    private readonly ApiClient client = new();
+    private readonly ApiClient client = new() { IsDebug = true };
 
     [Test]
     public async Task UserStationList()
@@ -31,6 +31,12 @@ public class ApiClientTests
     {
         var station = (await client.UserStationList()).Single();
 
+        var day = await client.StationDay(DateTime.Today, station.Id);
+
+        foreach (var item in day)
+        {
+            Console.WriteLine($"{item.Time} : {item}");
+        }
     }
 
     [Test]

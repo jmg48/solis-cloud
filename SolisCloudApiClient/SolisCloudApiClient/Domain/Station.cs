@@ -1,21 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace SolisCloudApiClient.Domain
+﻿namespace SolisCloudApiClient.Domain
 {
-    public class Station
+    public class Station(ApiClient apiClient, UserStation userStation)
     {
-        private ApiClient apiClient;
-        private UserStation userStation;
-
-        public Station(ApiClient apiClient, UserStation userStation)
-        {
-            this.apiClient = apiClient;
-            this.userStation = userStation;
-        }
+        public string Id => userStation.id;
 
         public async Task<Dictionary<DateTime, IStationData>> StationAll()
         {
